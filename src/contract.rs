@@ -170,7 +170,7 @@ pub mod query {
 
 #[cfg(test)]
 mod tests {
-    use crate::contract::execute::transfer;
+    use crate::contract::execute::{execute, transfer};
     use crate::msg::ConfigResponse;
 
     use super::*;
@@ -242,6 +242,71 @@ mod tests {
         assert_eq!("creator", value.creator.as_str());
     }
 
+    #[test]
+    fn test_execute() {
+        let mut deps = mock_dependencies();
+
+        let counter_offer = coins(40, "ETH");
+        let msg = InstantiateMsg {
+            counter_offer: counter_offer.clone(),
+            expires: 100_000,
+        };
+        let info = mock_info("creator", &coins(1, "BTC"));
+        // let mut deps = mock_dependencies();
+
+        let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+        assert_eq!(res.messages.len(), 0);
+
+        // random cannot execute
+        let info = mock_info("anyone", &counter_offer);
+        let env = mock_env();
+        let err = execute(deps.as_mut(), env, info).unwrap_err();
+        match err {
+            ContractError::Unauthorized { .. } => {}
+            e => panic!("unexpected error: {}", e),
+        }
+
+        // expired cannot execute
+        let info = mock_info("creator", &counter_offer);
+        let mut env = mock_env();
+        env.block.height = 200_000;
+        let err = execute(deps.as_mut(), env, info).unwrap_err();
+        match err {
+            ContractError::Std(StdError::GenericErr { msg }) => {
+                assert_eq!(msg.as_str(), "option expired")
+            }
+            e => panic!("unexpected error: {}", e),
+        }
+
+        // expired cannot execute
+        let info = mock_info("creator", &coins(39, "ETH"));
+        let env = mock_env();
+        let err = execute(deps.as_mut(), env, info).unwrap_err();
+        match err {
+            ContractError::Std(StdError::GenericErr { msg }) => {
+                assert!(msg.contains("must send exact couter_offer"))
+            }
+            e => panic!("unexpected error: {}", e),
+        }
+
+        // owner can transfer
+        let info = mock_info("creator", &counter_offer);
+        let res = transfer(deps.as_mut(), info, Addr::unchecked("someone")).unwrap();
+        assert_eq!(res.attributes.len(), 2);
+        assert_eq!(
+            res.attributes[0],
+            Attribute {
+                key: "action".to_string(),
+                value: "transfer".to_string()
+            }
+        );
+
+        // check updated properly
+        // let res = query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap();
+        // let value: ConfigResponse = from_binary(&res).unwrap();
+        // assert_eq!("someone", value.owner.as_str());
+        // assert_eq!("creator", value.creator.as_str());
+    }
     // #[test]
     // fn reset() {
     //     let mut deps = mock_dependencies();
