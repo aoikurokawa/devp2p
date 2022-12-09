@@ -45,19 +45,19 @@ pub fn instantiate(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::Transfer { recipient } => execute::transfer(deps, info, recipient),
-        ExecuteMsg::Execute {} => execute::execute(deps, info, count),
+        ExecuteMsg::Execute {} => execute::execute(deps, env, info),
         ExecuteMsg::Burn {} => execute::burn(deps, info, count),
     }
 }
 
 pub mod execute {
-    use cosmwasm_std::Addr;
+    use cosmwasm_std::{Addr, BankMsg};
 
     use super::*;
 
@@ -82,40 +82,93 @@ pub mod execute {
         Ok(response)
     }
 
-    pub fn increment(deps: DepsMut) -> Result<Response, ContractError> {
-        // STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        //     state.count += 1;
-        //     Ok(state)
-        // })?;
+    pub fn execute(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+        let mut state = STATE.load(deps.storage)?;
+        // ensure msg.sender is the owner
+        if info.sender != state.owner {
+            return Err(ContractError::Unauthorized {});
+        }
 
-        Ok(Response::new().add_attribute("action", "increment"))
+        // ensure not expired
+        if env.block.height >= state.expires {
+            return Err(ContractError::Std(StdError::GenericErr {
+                msg: "option expired".to_string(),
+            }));
+        }
+
+        // ensure sending proper counter_offer
+        if info.funds != state.counter_offer {
+            return Err(ContractError::Std(StdError::GenericErr {
+                msg: format!("must send exact couter_offer: {:?}", state.counter_offer),
+            }));
+        }
+
+        // release counter_offer to creator
+        let mut res = Response::new();
+        res.add_message(BankMsg::Send {
+            to_address: state.creator.into_string(),
+            amount: state.counter_offer,
+        });
+
+        // release collateral to sender
+        res.add_message(BankMsg::Send {
+            to_address: state.owner.into_string(),
+            amount: state.collateral,
+        });
+
+        // delete the option
+        STATE.remove(deps.storage);
+
+        res.add_attribute("action", "execute");
+        Ok(res)
     }
 
-    pub fn reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Response, ContractError> {
-        // STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        //     if info.sender != state.owner {
-        //         return Err(ContractError::Unauthorized {});
-        //     }
-        //     state.count = count;
-        //     Ok(state)
-        // })?;
-        Ok(Response::new().add_attribute("action", "reset"))
+    pub fn burn(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
+        let mut state = STATE.load(deps.storage)?;
+        // ensure is expired
+        if env.block.height < state.expires {
+            return Err(ContractError::Std(StdError::GenericErr {
+                msg: "option expired".to_string(),
+            }));
+        }
+
+        // ensure sending proper counter_offer
+        if !info.funds.is_empty() {
+            return Err(ContractError::Std(StdError::GenericErr {
+                msg: "Don't send funds with burn".to_string(),
+            }));
+        }
+
+        // release collateral to creator
+        let mut res = Response::new();
+        res.add_message(BankMsg::Send {
+            to_address: state.creator.into_string(),
+            amount: state.collateral,
+        });
+
+        // delete the option
+        STATE.remove(deps.storage);
+
+        res.add_attribute("action", "burn");
+        Ok(res)
     }
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Config {} => to_binary(&query::count(deps)?),
+        QueryMsg::Config {} => to_binary(&query::config(deps)?),
     }
 }
 
 pub mod query {
+    use crate::msg::ConfigResponse;
+
     use super::*;
 
-    pub fn count(deps: Deps) -> StdResult<GetCountResponse> {
+    pub fn config(deps: Deps) -> StdResult<ConfigResponse> {
         let state = STATE.load(deps.storage)?;
-        Ok(GetCountResponse { count: state.count })
+        Ok(state)
     }
 }
 
