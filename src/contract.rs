@@ -203,8 +203,6 @@ mod tests {
 
     #[test]
     fn test_transfer() {
-        let mut deps = mock_dependencies();
-
         let msg = InstantiateMsg {
             counter_offer: coins(40, "ETH"),
             expires: 100_000,
