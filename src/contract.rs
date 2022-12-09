@@ -125,7 +125,7 @@ pub mod execute {
         // ensure is expired
         if env.block.height < state.expires {
             return Err(ContractError::Std(StdError::GenericErr {
-                msg: "option expired".to_string(),
+                msg: "option not yet expired".to_string(),
             }));
         }
 
@@ -170,7 +170,7 @@ pub mod query {
 
 #[cfg(test)]
 mod tests {
-    use crate::contract::execute::{execute, transfer};
+    use crate::contract::execute::{burn, execute, transfer};
     use crate::msg::ConfigResponse;
 
     use super::*;
@@ -314,38 +314,64 @@ mod tests {
 
         // check deleted
         let _ = query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap_err();
-
-        // check updated properly
-        // let res = query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap();
-        // let value: ConfigResponse = from_binary(&res).unwrap();
-        // assert_eq!("someone", value.owner.as_str());
-        // assert_eq!("creator", value.creator.as_str());
     }
-    // #[test]
-    // fn reset() {
-    //     let mut deps = mock_dependencies();
 
-    //     let msg = InstantiateMsg { count: 17 };
-    //     let info = mock_info("creator", &coins(2, "token"));
-    //     let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+    #[test]
+    fn test_burn() {
+        let mut deps = mock_dependencies();
 
-    //     // beneficiary can release it
-    //     let unauth_info = mock_info("anyone", &coins(2, "token"));
-    //     let msg = ExecuteMsg::Reset { count: 5 };
-    //     let res = execute(deps.as_mut(), mock_env(), unauth_info, msg);
-    //     match res {
-    //         Err(ContractError::Unauthorized {}) => {}
-    //         _ => panic!("Must return unauthorized error"),
-    //     }
+        let counter_offer = coins(40, "ETH");
+        let collateral = coins(1, "BTC");
 
-    //     // only the original creator can reset the counter
-    //     let auth_info = mock_info("creator", &coins(2, "token"));
-    //     let msg = ExecuteMsg::Reset { count: 5 };
-    //     let _res = execute(deps.as_mut(), mock_env(), auth_info, msg).unwrap();
+        let msg = InstantiateMsg {
+            counter_offer: counter_offer.clone(),
+            expires: 100_000,
+        };
+        let info = mock_info("creator", &collateral);
 
-    //     // should now be 5
-    //     let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-    //     let value: GetCountResponse = from_binary(&res).unwrap();
-    //     assert_eq!(5, value.count);
-    // }
+        let _ = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        let info = mock_info("creator", &[]);
+        let _ = transfer(deps.as_mut(), info, Addr::unchecked("owner")).unwrap();
+
+        // non-expired cannot execute
+        let info = mock_info("anyone", &[]);
+        let env = mock_env();
+        let err = burn(deps.as_mut(), env, info).unwrap_err();
+        match err {
+            ContractError::Std(StdError::GenericErr { msg }) => {
+                assert_eq!(msg.as_str(), "option not yet expired")
+            }
+            e => panic!("unexpected error: {}", e),
+        }
+
+        // with funds cannot execute
+        let info = mock_info("anyone", &counter_offer);
+        let mut env = mock_env();
+        env.block.height = 200_000;
+        let err = burn(deps.as_mut(), env, info).unwrap_err();
+        match err {
+            ContractError::Std(StdError::GenericErr { msg }) => {
+                assert_eq!(msg.as_str(), "Don't send funds with burn")
+            }
+            e => panic!("unexpected error: {}", e),
+        }
+
+        // proper execution
+        let info = mock_info("anyone", &[]);
+        let mut env = mock_env();
+        env.block.height = 200_000;
+        let res = burn(deps.as_mut(), env, info).unwrap();
+        assert_eq!(res.messages.len(), 1);
+        assert_eq!(
+            res.messages[0].msg,
+            CosmosMsg::Bank(BankMsg::Send {
+                to_address: "creator".into(),
+                amount: collateral.clone()
+            })
+        );
+
+        // check deleted
+        let _ = query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap_err();
+    }
 }
