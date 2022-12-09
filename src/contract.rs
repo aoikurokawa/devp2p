@@ -175,7 +175,7 @@ mod tests {
 
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, from_binary, Addr, Attribute};
+    use cosmwasm_std::{coins, from_binary, Addr, Attribute, BankMsg, CosmosMsg};
 
     #[test]
     fn test_proper_initialization() {
@@ -247,15 +247,18 @@ mod tests {
         let mut deps = mock_dependencies();
 
         let counter_offer = coins(40, "ETH");
+        let collateral = coins(1, "BTC");
+
         let msg = InstantiateMsg {
             counter_offer: counter_offer.clone(),
             expires: 100_000,
         };
-        let info = mock_info("creator", &coins(1, "BTC"));
-        // let mut deps = mock_dependencies();
+        let info = mock_info("creator", &collateral);
 
-        let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-        assert_eq!(res.messages.len(), 0);
+        let _ = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        let info = mock_info("creator", &[]);
+        let _ = transfer(deps.as_mut(), info, Addr::unchecked("owner")).unwrap();
 
         // random cannot execute
         let info = mock_info("anyone", &counter_offer);
@@ -267,7 +270,7 @@ mod tests {
         }
 
         // expired cannot execute
-        let info = mock_info("creator", &counter_offer);
+        let info = mock_info("owner", &counter_offer);
         let mut env = mock_env();
         env.block.height = 200_000;
         let err = execute(deps.as_mut(), env, info).unwrap_err();
@@ -279,7 +282,7 @@ mod tests {
         }
 
         // expired cannot execute
-        let info = mock_info("creator", &coins(39, "ETH"));
+        let info = mock_info("owner", &coins(39, "ETH"));
         let env = mock_env();
         let err = execute(deps.as_mut(), env, info).unwrap_err();
         match err {
@@ -289,17 +292,28 @@ mod tests {
             e => panic!("unexpected error: {}", e),
         }
 
-        // owner can transfer
-        let info = mock_info("creator", &counter_offer);
-        let res = transfer(deps.as_mut(), info, Addr::unchecked("someone")).unwrap();
-        assert_eq!(res.attributes.len(), 2);
+        // proper execution
+        let info = mock_info("owner", &counter_offer);
+        let env = mock_env();
+        let res = execute(deps.as_mut(), env, info).unwrap();
+        assert_eq!(res.messages.len(), 2);
         assert_eq!(
-            res.attributes[0],
-            Attribute {
-                key: "action".to_string(),
-                value: "transfer".to_string()
-            }
+            res.messages[0].msg,
+            CosmosMsg::Bank(BankMsg::Send {
+                to_address: "creator".into(),
+                amount: counter_offer.clone()
+            })
         );
+        assert_eq!(
+            res.messages[1].msg,
+            CosmosMsg::Bank(BankMsg::Send {
+                to_address: "owner".into(),
+                amount: collateral.clone()
+            })
+        );
+
+        // check deleted
+        let _ = query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap_err();
 
         // check updated properly
         // let res = query(deps.as_ref(), mock_env(), QueryMsg::Config {}).unwrap();
