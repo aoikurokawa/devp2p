@@ -1,4 +1,4 @@
-use cosmwasm_schema::cw_serde;
+use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{Addr, Coin};
 
 use crate::state::State;
@@ -22,13 +22,13 @@ pub enum ExecuteMsg {
 }
 
 #[cw_serde]
-// #[derive(QueryResponses)]
+#[derive(QueryResponses)]
 pub enum QueryMsg {
     // GetCount returns the current count as a json-encoded number
-    // #[returns(GetCountResponse)]
+    #[returns(ConfigResponse)]
     Config {},
 }
 
 // We define a custom struct for each query response
 // #[cw_serde]
-pub type ConfigResponse  = State;
+pub type ConfigResponse = State;

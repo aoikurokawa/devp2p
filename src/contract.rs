@@ -6,7 +6,7 @@ use cosmwasm_std::{
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::msg::{ExecuteMsg, GetCountResponse, InstantiateMsg, QueryMsg};
+use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{State, STATE};
 
 // version info for migration info
@@ -52,7 +52,7 @@ pub fn execute(
     match msg {
         ExecuteMsg::Transfer { recipient } => execute::transfer(deps, info, recipient),
         ExecuteMsg::Execute {} => execute::execute(deps, env, info),
-        ExecuteMsg::Burn {} => execute::burn(deps, info, count),
+        ExecuteMsg::Burn {} => execute::burn(deps, env, info),
     }
 }
 
@@ -73,17 +73,17 @@ pub mod execute {
         }
 
         // set new owner on state
-        state.owner = recipient;
+        state.owner = recipient.clone();
         STATE.save(deps.storage, &state)?;
 
-        let response = Response::new();
-        response.add_attribute("action", "transfer");
-        response.add_attribute("owner", recipient);
+        let response = Response::new()
+            .add_attribute("action", "transfer")
+            .add_attribute("owner", recipient.clone());
         Ok(response)
     }
 
     pub fn execute(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
-        let mut state = STATE.load(deps.storage)?;
+        let state = STATE.load(deps.storage)?;
         // ensure msg.sender is the owner
         if info.sender != state.owner {
             return Err(ContractError::Unauthorized {});
@@ -104,27 +104,24 @@ pub mod execute {
         }
 
         // release counter_offer to creator
-        let mut res = Response::new();
-        res.add_message(BankMsg::Send {
-            to_address: state.creator.into_string(),
-            amount: state.counter_offer,
-        });
+        let res = Response::new()
+            .add_message(BankMsg::Send {
+                to_address: state.creator.into_string(),
+                amount: state.counter_offer,
+            })
+            .add_message(BankMsg::Send {
+                to_address: state.owner.into_string(),
+                amount: state.collateral,
+            })
+            .add_attribute("action", "execute");
 
-        // release collateral to sender
-        res.add_message(BankMsg::Send {
-            to_address: state.owner.into_string(),
-            amount: state.collateral,
-        });
-
-        // delete the option
         STATE.remove(deps.storage);
 
-        res.add_attribute("action", "execute");
         Ok(res)
     }
 
     pub fn burn(deps: DepsMut, env: Env, info: MessageInfo) -> Result<Response, ContractError> {
-        let mut state = STATE.load(deps.storage)?;
+        let state = STATE.load(deps.storage)?;
         // ensure is expired
         if env.block.height < state.expires {
             return Err(ContractError::Std(StdError::GenericErr {
@@ -140,16 +137,15 @@ pub mod execute {
         }
 
         // release collateral to creator
-        let mut res = Response::new();
-        res.add_message(BankMsg::Send {
-            to_address: state.creator.into_string(),
-            amount: state.collateral,
-        });
-
+        let res = Response::new()
+            .add_message(BankMsg::Send {
+                to_address: state.creator.into_string(),
+                amount: state.collateral,
+            })
+            .add_attribute("action", "burn");
         // delete the option
         STATE.remove(deps.storage);
 
-        res.add_attribute("action", "burn");
         Ok(res)
     }
 }
