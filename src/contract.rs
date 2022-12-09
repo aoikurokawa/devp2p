@@ -50,17 +50,36 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Transfer {recipient: } => execute::transfer(),
-        ExecuteMsg::Execute {} => execute::reset(deps, info, count),
-        ExecuteMsg::Burn {} => execute::reset(deps, info, count),
+        ExecuteMsg::Transfer { recipient } => execute::transfer(deps, info, recipient),
+        ExecuteMsg::Execute {} => execute::execute(deps, info, count),
+        ExecuteMsg::Burn {} => execute::burn(deps, info, count),
     }
 }
 
 pub mod execute {
+    use cosmwasm_std::Addr;
+
     use super::*;
 
-    pub fn transfer() -> Result<Response, ContractError> {
-        Ok(Response::new())
+    pub fn transfer(
+        deps: DepsMut,
+        info: MessageInfo,
+        recipient: Addr,
+    ) -> Result<Response, ContractError> {
+        let mut state = STATE.load(deps.storage)?;
+        // ensure msg.sender is the owner
+        if info.sender != state.owner {
+            return Err(ContractError::Unauthorized {});
+        }
+
+        // set new owner on state
+        state.owner = recipient;
+        STATE.save(deps.storage, &state)?;
+
+        let response = Response::new();
+        response.add_attribute("action", "transfer");
+        response.add_attribute("owner", recipient);
+        Ok(response)
     }
 
     pub fn increment(deps: DepsMut) -> Result<Response, ContractError> {
