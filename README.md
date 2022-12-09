@@ -100,5 +100,5 @@ the `Developing.md` and `Publishing.md` files as useful referenced, but please s
 proper description in the README.
 
 ## References
-- []()
+- [simple option](https://github.com/deus-labs/cw-contracts/blob/main/contracts/simple-option/src/contract.rs)
 - [cw-contracts](https://github.com/deus-labs/cw-contracts)
