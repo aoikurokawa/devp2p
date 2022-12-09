@@ -50,31 +50,36 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Increment {} => execute::increment(deps),
-        ExecuteMsg::Reset { count } => execute::reset(deps, info, count),
+        ExecuteMsg::Transfer {recipient: } => execute::transfer(),
+        ExecuteMsg::Execute {} => execute::reset(deps, info, count),
+        ExecuteMsg::Burn {} => execute::reset(deps, info, count),
     }
 }
 
 pub mod execute {
     use super::*;
 
+    pub fn transfer() -> Result<Response, ContractError> {
+        Ok(Response::new())
+    }
+
     pub fn increment(deps: DepsMut) -> Result<Response, ContractError> {
-        STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-            state.count += 1;
-            Ok(state)
-        })?;
+        // STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
+        //     state.count += 1;
+        //     Ok(state)
+        // })?;
 
         Ok(Response::new().add_attribute("action", "increment"))
     }
 
     pub fn reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Response, ContractError> {
-        STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-            if info.sender != state.owner {
-                return Err(ContractError::Unauthorized {});
-            }
-            state.count = count;
-            Ok(state)
-        })?;
+        // STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
+        //     if info.sender != state.owner {
+        //         return Err(ContractError::Unauthorized {});
+        //     }
+        //     state.count = count;
+        //     Ok(state)
+        // })?;
         Ok(Response::new().add_attribute("action", "reset"))
     }
 }
@@ -82,7 +87,7 @@ pub mod execute {
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetCount {} => to_binary(&query::count(deps)?),
+        QueryMsg::Config {} => to_binary(&query::count(deps)?),
     }
 }
 
