@@ -1,5 +1,7 @@
 mod errors;
 mod mac;
+mod ecies;
+mod types;
 
 
 pub fn add(left: usize, right: usize) -> usize {

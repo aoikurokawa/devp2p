@@ -13,4 +13,6 @@ rlp = "0.5.2"
 aes = "0.8.2"
 ethereum-types = "0.14.1"
 generic-array = "0.14.6"
+sha2 = "0.10.6"
 sha3 = "0.10.6"
+educe = { version = "0.4.20" }
